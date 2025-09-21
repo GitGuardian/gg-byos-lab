@@ -12,8 +12,9 @@ import os
 import sys
 import json
 import requests
+import time
 from datetime import datetime
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Set
 from pygitguardian import GGClient
 
 
@@ -40,11 +41,24 @@ class GitHubGistScanner:
             print(f"\nAll required: {', '.join(env_vars.keys())}")
             sys.exit(1)
         
-        self.github_username = os.getenv('GITHUB_USERNAME')
+        self.github_usernames = self._parse_usernames(os.getenv('GITHUB_USERNAME', ''))
+        self.github_orgs = self._parse_organizations(os.getenv('GITHUB_ORGS', ''))
         self.gg_client = GGClient(api_key=self.gitguardian_api_key)
         self.scanned_gists_file = "scanned_gists.json"
         self.scanned_gists = self.load_scanned_gists()
         self.force_rescan = os.getenv("FORCE_RESCAN", "false").lower() == "true"
+
+    def _parse_usernames(self, users_string: str) -> List[str]:
+        """Parse comma-separated usernames from environment variable."""
+        if not users_string.strip():
+            return []
+        return [user.strip() for user in users_string.split(',') if user.strip()]
+
+    def _parse_organizations(self, orgs_string: str) -> List[str]:
+        """Parse comma-separated organization names from environment variable."""
+        if not orgs_string.strip():
+            return []
+        return [org.strip() for org in orgs_string.split(',') if org.strip()]
 
     def load_scanned_gists(self) -> Dict:
         """Load previously scanned gists from JSON file."""
@@ -69,15 +83,86 @@ class GitHubGistScanner:
         
         return self.scanned_gists[gist_id].get('updated_at') != updated_at
 
-    def get_github_gists(self) -> Optional[List[Dict]]:
-        """Fetch gists from GitHub API. Returns None on error."""
-        if self.github_username:
-            url = f"https://api.github.com/users/{self.github_username}/gists"
-            scan_type = f"user '{self.github_username}'"
-        else:
-            url = "https://api.github.com/gists"
-            scan_type = "authenticated user"
-            
+    def get_organization_members(self, org_name: str) -> Optional[List[str]]:
+        """Fetch all public members of a GitHub organization."""
+        url = f"https://api.github.com/orgs/{org_name}/members"
+        headers = {
+            "Authorization": f"Bearer {self.github_api_key}",
+            "Accept": "application/vnd.github+json",
+            "X-GitHub-Api-Version": "2022-11-28"
+        }
+        
+        print(f"📥 Fetching members of organization: {org_name}")
+        all_members = []
+        page = 1
+        per_page = 100  # GitHub API max is 100 per page
+        
+        while True:
+            try:
+                params = {"page": page, "per_page": per_page}
+                response = requests.get(url, headers=headers, params=params)
+                
+                if response.status_code == 404:
+                    print(f"❌ Organization '{org_name}' not found or not accessible")
+                    return None
+                elif response.status_code == 403:
+                    print(f"❌ Access denied to organization '{org_name}' (private org or insufficient permissions)")
+                    return None
+                
+                response.raise_for_status()
+                
+                members = response.json()
+                if not members:
+                    break
+                    
+                member_logins = [member['login'] for member in members]
+                all_members.extend(member_logins)
+                
+                print(f"Fetched page {page}: {len(member_logins)} members (total: {len(all_members)})")
+                page += 1
+                
+                # Stop if GitHub returned fewer results than requested (last page)
+                if len(members) < per_page:
+                    break
+                    
+                # Small delay to be respectful to the API
+                time.sleep(0.1)
+                
+            except requests.exceptions.RequestException as e:
+                print(f"❌ Error fetching members for organization {org_name}: {e}")
+                return None
+        
+        print(f"✅ Found {len(all_members)} members in organization '{org_name}'")
+        return all_members
+
+    def get_all_target_users(self) -> List[str]:
+        """Get all target users to scan based on configuration."""
+        target_users = []
+        
+        # Specific usernames specified
+        if self.github_usernames:
+            target_users.extend(self.github_usernames)
+        
+        # Organizations specified
+        if self.github_orgs:
+            for org_name in self.github_orgs:
+                members = self.get_organization_members(org_name)
+                if members:
+                    target_users.extend(members)
+        
+        # Remove duplicates while preserving order
+        seen = set()
+        unique_users = []
+        for user in target_users:
+            if user not in seen:
+                seen.add(user)
+                unique_users.append(user)
+        
+        return unique_users
+
+    def get_user_gists(self, username: str) -> Optional[List[Dict]]:
+        """Fetch gists for a specific user."""
+        url = f"https://api.github.com/users/{username}/gists"
         headers = {
             "Authorization": f"Bearer {self.github_api_key}",
             "Accept": "application/vnd.github+json",
@@ -85,7 +170,50 @@ class GitHubGistScanner:
         }
         
         try:
-            print(f"📥 Fetching gists for {scan_type}...")
+            all_gists = []
+            page = 1
+            per_page = 100
+            
+            while True:
+                params = {"page": page, "per_page": per_page}
+                response = requests.get(url, headers=headers, params=params)
+                
+                if response.status_code == 404:
+                    print(f"❌ User '{username}' not found")
+                    return []
+                
+                response.raise_for_status()
+                
+                gists = response.json()
+                if not gists:
+                    break
+                    
+                all_gists.extend(gists)
+                page += 1
+                
+                # GitHub API returns fewer results than per_page when on last page
+                if len(gists) < per_page:
+                    break
+                
+                # Small delay to be respectful to the API
+                time.sleep(0.1)
+            
+            return all_gists
+            
+        except requests.exceptions.RequestException as e:
+            print(f"❌ Error fetching gists for user {username}: {e}")
+            return None
+
+    def get_authenticated_user_gists(self) -> Optional[List[Dict]]:
+        """Fetch gists for the authenticated user (including private gists)."""
+        url = "https://api.github.com/gists"
+        headers = {
+            "Authorization": f"Bearer {self.github_api_key}",
+            "Accept": "application/vnd.github+json",
+            "X-GitHub-Api-Version": "2022-11-28"
+        }
+        
+        try:
             all_gists = []
             page = 1
             per_page = 100
@@ -100,7 +228,6 @@ class GitHubGistScanner:
                     break
                     
                 all_gists.extend(gists)
-                print(f"Fetched page {page}: {len(gists)} gists")
                 page += 1
                 
                 # GitHub API returns fewer results than per_page when on last page
@@ -110,8 +237,42 @@ class GitHubGistScanner:
             return all_gists
             
         except requests.exceptions.RequestException as e:
-            print(f"❌ Error fetching GitHub gists: {e}")
+            print(f"❌ Error fetching authenticated user gists: {e}")
             return None
+
+    def get_github_gists(self) -> Optional[List[Dict]]:
+        """Fetch gists from GitHub API based on configuration. Returns None on error."""
+        all_gists = []
+        
+        # If no specific users or orgs specified, scan authenticated user
+        if not self.github_usernames and not self.github_orgs:
+            print("📥 Fetching gists for authenticated user...")
+            gists = self.get_authenticated_user_gists()
+            if gists is None:
+                return None
+            all_gists.extend(gists)
+            print(f"Found {len(gists)} gist(s) for authenticated user")
+        else:
+            # Scan specific users and/or organization members
+            target_users = self.get_all_target_users()
+            if not target_users:
+                print("❌ No target users found to scan")
+                return []
+            
+            print(f"📥 Fetching gists for {len(target_users)} user(s)...")
+            
+            for i, username in enumerate(target_users, 1):
+                print(f"[{i}/{len(target_users)}] Fetching gists for user: {username}")
+                user_gists = self.get_user_gists(username)
+                if user_gists is not None:
+                    # Add username to each gist for tracking
+                    for gist in user_gists:
+                        gist['_scanned_user'] = username
+                    all_gists.extend(user_gists)
+                    if user_gists:
+                        print(f"  └─ Found {len(user_gists)} gist(s)")
+        
+        return all_gists
 
     def get_gist_details(self, gist_id: str) -> Optional[Dict]:
         """Fetch detailed gist information including file contents."""
@@ -164,9 +325,19 @@ class GitHubGistScanner:
         print(f"Scanning gist: {gist_description or gist_id}")
         
         try:
+            # Extract username from scanned_user or gist owner
+            username = gist.get('_scanned_user', 'unknown')
+            if not username or username == 'authenticated user':
+                # Try to extract from URL as fallback
+                gist_url = gist.get('html_url', '')
+                if '/gist.github.com/' in gist_url:
+                    username = gist_url.split('/gist.github.com/')[1].split('/')[0] if '/' in gist_url.split('/gist.github.com/')[1] else 'unknown'
+                else:
+                    username = 'authenticated_user'
+            
             documents = [{
                 "document": content, 
-                "filename": f"github_gist_{gist_id}.md"
+                "filename": f"github_gist_{username}_{gist_id}.md"
             }]
             multi_scan_result = self.gg_client.scan_and_create_incidents(
                 documents, 
@@ -224,7 +395,21 @@ class GitHubGistScanner:
 
     def run_scan(self):
         """Main scanning workflow."""
-        scan_target = f"user '{self.github_username}'" if self.github_username else "authenticated user"
+        # Determine scan target description
+        scan_targets = []
+        if self.github_usernames:
+            if len(self.github_usernames) == 1:
+                scan_targets.append(f"user '{self.github_usernames[0]}'")
+            else:
+                scan_targets.append(f"{len(self.github_usernames)} users: {', '.join(self.github_usernames)}")
+        if self.github_orgs:
+            scan_targets.append(f"{len(self.github_orgs)} organization(s): {', '.join(self.github_orgs)}")
+        
+        if scan_targets:
+            scan_target = " and ".join(scan_targets)
+        else:
+            scan_target = "authenticated user"
+            
         print(f"📋 Starting GitHub Gist Scanner for {scan_target}")
         print(f"Source UUID: {self.source_uuid}")
         if self.force_rescan:
@@ -240,16 +425,18 @@ class GitHubGistScanner:
             print("❌ Failed to fetch gists. Please check your GitHub API key and permissions.")
             return
         if not gists:
-            print(f"ℹ️  No gists found for {scan_target}.")
+            print(f"ℹ️  No gists found for specified target(s).")
             return
         
-        print(f"Found {len(gists)} gist(s)\n")
+        print(f"Found {len(gists)} gist(s) total\n")
         
         scanned_count = skipped_count = no_content_count = secrets_found = 0
         
         for gist in gists:
             gist_id = gist.get('id')
             updated_at = gist.get('updated_at')
+            gist_description = gist.get('description', 'No description')
+            scanned_user = gist.get('_scanned_user', 'authenticated user')
             
             if not self.should_scan_gist(gist_id, updated_at):
                 skipped_count += 1
@@ -262,18 +449,22 @@ class GitHubGistScanner:
                     'description': scan_data['gist_description'],
                     'url': scan_data['gist_url'],
                     'file_count': scan_data['file_count'],
+                    'scanned_user': scanned_user,
+                    'github_username': scanned_user,  # Explicit GitHub username
                     'updated_at': updated_at,
                     'last_scanned': datetime.now().isoformat(),
                     'source_uuid': self.source_uuid
                 }
                 scanned_count += 1
             else:
-                # Gist has no content to scan
+                # Gist has no content to scan  
                 no_content_count += 1
                 self.scanned_gists[gist_id] = {
-                    'description': gist.get('description', 'No description'),
+                    'description': gist_description,
                     'url': gist.get('html_url', ''),
                     'file_count': len(gist.get('files', {})),
+                    'scanned_user': scanned_user,
+                    'github_username': scanned_user,  # Explicit GitHub username
                     'updated_at': updated_at,
                     'last_scanned': datetime.now().isoformat(),
                     'source_uuid': self.source_uuid,
