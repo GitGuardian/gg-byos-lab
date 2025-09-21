@@ -59,8 +59,8 @@ class DustAgentScanner:
         with open(self.scanned_agents_file, 'w') as f:
             json.dump(self.scanned_agents, f, indent=2)
     
-    def get_dust_agents(self) -> List[Dict]:
-        """Fetch agent configurations from Dust API."""
+    def get_dust_agents(self) -> Optional[List[Dict]]:
+        """Fetch agent configurations from Dust API. Returns None on error."""
         url = f"https://dust.tt/api/v1/w/{self.dust_workspace_id}/assistant/agent_configurations"
         headers = {"Authorization": f"Bearer {self.dust_api_key}"}
         
@@ -69,8 +69,8 @@ class DustAgentScanner:
             response.raise_for_status()
             return response.json().get('agentConfigurations', [])
         except requests.exceptions.RequestException as e:
-            print(f"Error fetching Dust agents: {e}")
-            return []
+            print(f"❌ Error fetching Dust agents: {e}")
+            return None
     
     def should_scan_agent(self, agent_id: str, version: int) -> bool:
         """Check if agent should be scanned based on ID and version."""
@@ -152,8 +152,11 @@ class DustAgentScanner:
         
         print("📥 Fetching Dust agents...")
         agents = self.get_dust_agents()
+        if agents is None:
+            print("❌ Failed to fetch agents. Please check your Dust API key and workspace ID.")
+            return
         if not agents:
-            print("No agents found or error fetching agents")
+            print("ℹ️  No agents found in your Dust workspace.")
             return
         
         print(f"Found {len(agents)} agent(s)\n")
