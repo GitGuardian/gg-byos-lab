@@ -1,4 +1,4 @@
-# GitHub Gist Scanner (User/Authenticated) with GitGuardian BYOS
+# GitHub Gist Scanner with GitGuardian BYOS
 
 **Scans GitHub Gists for secrets and sensitive information** using GitGuardian's BYOS (Bring Your Own Source) functionality.
 
