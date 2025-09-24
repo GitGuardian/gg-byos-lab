@@ -1,4 +1,4 @@
-# GitLab Snippet Scanner (SaaS & On-Premise) with GitGuardian BYOS
+# GitLab Snippet Scanner with GitGuardian BYOS
 
 **Scans GitLab snippets for secrets and sensitive information** using GitGuardian's BYOS (Bring Your Own Source) functionality.
 
