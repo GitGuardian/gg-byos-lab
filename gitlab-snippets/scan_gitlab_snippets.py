@@ -171,6 +171,9 @@ class GitLabSnippetScanner:
                     is_project_snippet = bool(path_part and path_part != "")
             
             if is_project_snippet:
+                # Store the original project_id from GitLab API
+                snippet['_project_id'] = snippet.get('project_id')
+                
                 # Extract project name from URL or project object
                 project_info = snippet.get('project', {})
                 if project_info and isinstance(project_info, dict):
