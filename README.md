@@ -2,6 +2,8 @@
 
 **Bring Your Own Source (BYOS) Examples and Integrations**
 
+![BYOS Integration Hub Banner](./assets/bring-your-own-source-thumbnail.png)
+
 Welcome to the BYOS Integration Hub! This repository showcases practical examples and integrations for GitGuardian's Bring Your Own Source feature, helping you scan any custom data source for exposed secrets and credentials.
 
 ### 👋 **What is BYOS?**
