@@ -1,0 +1,26 @@
+### Scan current CI Pipeline logs for secrets
+security:ggshield:logs:
+  stage: .post # Runs after all other stages
+  image: your-docker-account/enhanced-ggshield:latest
+
+  variables:
+    SOURCE_UUID: "your-custom-source-uuid-from-gitguardian"
+
+  # Vault integration for secure token injection
+  id_tokens:
+    VAULT_ID_TOKEN:
+      aud: "https://your-vault-server.com"
+
+  secrets:
+    GITGUARDIAN_API_KEY:
+      vault: Your_Project_Name/scan_logs/GITGUARDIAN_API_KEY@ci
+      file: false
+    GITLAB_TOKEN:
+      vault: Your_Project_Name/scan_logs/GITLAB_TOKEN@ci
+      file: false
+
+  script:
+    - cd .gitlab/ci_scripts && bash scan_logs.sh
+
+  rules:
+    - when: always # Run even if previous jobs failed
