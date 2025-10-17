@@ -1,0 +1,39 @@
+default_stages: [pre-commit]
+default_install_hook_types: [pre-commit]
+default_language_version:
+  python: python3.11
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.14.0
+    hooks:
+      - id: ruff-check
+        name: lint
+        args: [--fix]
+
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.6.0
+    hooks:
+      - id: check-json
+      - id: check-added-large-files
+      - id: check-yaml
+
+  - repo: https://github.com/pre-commit/mirrors-prettier # to format JSON, YAML and markdown files among others
+    rev: v3.1.0
+    hooks:
+      - id: prettier
+
+  - repo: https://github.com/codespell-project/codespell
+    rev: v2.4.1
+    hooks:
+      - id: codespell
+
+  - repo: https://github.com/gitguardian/ggshield
+    rev: v1.43.0
+    hooks:
+      - id: ggshield
+
+  - repo: https://github.com/gitguardian/ggshield
+    rev: v1.43.0
+    hooks:
+      - id: ggshield-push
+        stages: [pre-push]
