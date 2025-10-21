@@ -9,6 +9,39 @@ This tool automatically detects exposed credentials like API keys, database pass
 > 
 > This integration uses a **file-based approach** where you save your Claude project configurations locally. This is actually quite practical since many users already manage their AI prompts and configurations in files! When/if Anthropic adds project management APIs, we can easily switch to direct API fetching.
 
+## Common Findings in Claude Projects
+
+When scanning Claude project configurations and instructions, here are typical secrets we discover:
+
+- 🔑 **API Keys & Tokens** OpenAI (`sk-...`), Anthropic, Slack, GitHub, and third-party service tokens embedded in example calls or integration instructions
+- 🗝️ **Personal Access Tokens (PATs)** GitHub (`ghp_...`), GitLab, Bitbucket, and Azure DevOps tokens included to demonstrate CI/CD or repository integrations
+- 🔐 **Cloud Provider Credentials** AWS access keys (`AKIA...`), Google Cloud service accounts, Azure storage keys, and Terraform state tokens in infrastructure examples
+- 🔒 **Authentication Secrets** JWT signing keys, OAuth client secrets, webhook validation secrets, and session keys for authentication workflows
+- 📧 **Email & Communication Credentials** SendGrid (`SG.`), Mailgun, Twilio, and SMTP credentials for notification and communication examples
+- 🛢️ **Database Credentials** MongoDB URIs, PostgreSQL connection strings, Redis passwords, and MySQL credentials in data processing examples
+- 🔧 **CI/CD & Deployment Secrets** Docker registry tokens, Kubernetes secrets, Jenkins API tokens, and CircleCI/Travis credentials for deployment automation
+
+## Why This Matters
+
+**For AI Development Teams:**
+- Claude projects are often **shared across teams** via exports/imports
+- Projects may be **committed to repositories** for version control
+- Instructions are **copy-pasted** between projects, spreading credentials
+- **Test/example credentials** often become production credentials
+
+**Security Impact:**
+- Exposed secrets provide **unauthorized access** to systems
+- **Lateral movement** if credentials have broad permissions
+- **Data exfiltration** from databases and APIs
+- **Supply chain attacks** via compromised CI/CD tokens
+
+**Best Practice:**
+Always use **environment variables** or **secret managers** in your Claude instructions:
+```text
+✅ Good: "Use the API key from environment variable ${OPENAI_API_KEY}"
+❌ Bad: "Use this API key: sk-proj-Ab3dEf9..."
+```
+
 ## Setup
 
 1. **Install dependencies**
