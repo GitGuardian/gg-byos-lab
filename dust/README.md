@@ -4,6 +4,39 @@
 
 This tool automatically detects exposed credentials like API keys, database passwords, tokens, and other secrets that might be accidentally included in your Dust agent configurations. Tracks scanned agents by version to avoid rescanning unchanged agents. Uses the GitGuardian Python SDK [py-gitguardian](https://github.com/GitGuardian/py-gitguardian) to create security incidents in your GitGuardian dashboard for any secrets found.
 
+## Common Findings in Dust Agents
+
+When scanning Dust agent instructions and configurations, here are typical secrets we discover:
+
+- 🔑 **API Keys & Tokens** OpenAI (`sk-...`), Anthropic, Google AI, Slack, and third-party service tokens embedded in agent instructions or tool configurations
+- 🗝️ **Personal Access Tokens (PATs)** GitHub (`ghp_...`), GitLab, Notion, Linear, and Jira tokens included for data source integrations
+- 🔐 **Cloud Provider Credentials** AWS access keys (`AKIA...`), Google Cloud service accounts, Azure storage keys for cloud data access
+- 🔒 **Authentication Secrets** JWT signing keys, OAuth client secrets, API authentication tokens, and webhook secrets for custom integrations
+- 📧 **Email & Communication Credentials** SendGrid (`SG.`), Mailgun, Twilio, and SMTP credentials for notification workflows
+- 🛢️ **Database Credentials** MongoDB URIs, PostgreSQL connection strings, Redis passwords, and MySQL credentials in data retrieval examples
+- 🔧 **Workspace & Tool Secrets** Airtable API keys, HubSpot tokens, Salesforce credentials, and custom tool authentication secrets
+
+## Why This Matters
+
+**For AI Operations Teams:**
+- Dust agents often have **broad access to company data sources**
+- Agent configurations may be **exported and shared** across teams
+- Instructions are **versioned and stored**, creating a history of exposed secrets
+- **Test credentials** in agent development often leak into production
+
+**Security Impact:**
+- Exposed secrets provide **unauthorized access** to connected data sources
+- **Data exfiltration** from CRMs, databases, and productivity tools
+- **Lateral movement** through interconnected services
+- **Supply chain risks** via compromised API integrations
+
+**Best Practice:**
+Always use **Dust's environment variables** or **secret storage** features:
+```text
+✅ Good: "Use API key from {env.OPENAI_API_KEY}"
+❌ Bad: "Use this API key: sk-proj-Ab3dEf9..."
+```
+
 ## Setup
 
 1. **Install dependencies**
